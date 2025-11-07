@@ -91,20 +91,19 @@ RUN echo '[supervisord]' > /etc/supervisord.conf \
 # Expose port (Railway will set PORT env var at runtime)
 EXPOSE 80
 
+# Copy Railway initialization script
+COPY railway/init-app.sh /usr/local/bin/init-app.sh
+RUN chmod +x /usr/local/bin/init-app.sh
+
 # Create startup script
 RUN echo '#!/bin/sh' > /start.sh \
     && echo 'PORT=${PORT:-80}' >> /start.sh \
-    && echo 'sed "s/PORT_PLACEHOLDER/${PORT}/" /etc/nginx/http.d/default.conf.template > /etc/nginx/http.d/default.conf' >> /start.sh \
+    && echo 'echo "Configuring Nginx for port $PORT..."' >> /start.sh \
+    && echo 'sed "s/PORT_PLACEHOLDER/$PORT/" /etc/nginx/http.d/default.conf.template > /etc/nginx/http.d/default.conf' >> /start.sh \
     && echo 'cd /var/www/html' >> /start.sh \
-    && echo 'echo "Clearing config cache..."' >> /start.sh \
-    && echo 'php artisan config:clear || true' >> /start.sh \
-    && echo 'echo "Running migrations..."' >> /start.sh \
-    && echo 'php artisan migrate --force || echo "Migration failed, continuing anyway..."' >> /start.sh \
-    && echo 'echo "Caching configuration..."' >> /start.sh \
-    && echo 'php artisan config:cache || true' >> /start.sh \
-    && echo 'php artisan route:cache || true' >> /start.sh \
-    && echo 'php artisan view:cache || true' >> /start.sh \
-    && echo 'echo "Starting services..."' >> /start.sh \
+    && echo 'echo "Running Laravel initialization..."' >> /start.sh \
+    && echo '/usr/local/bin/init-app.sh || echo "Warning: Initialization had errors, but continuing..."' >> /start.sh \
+    && echo 'echo "Starting services (Nginx + PHP-FPM)..."' >> /start.sh \
     && echo 'exec /usr/bin/supervisord -c /etc/supervisord.conf' >> /start.sh \
     && chmod +x /start.sh
 
