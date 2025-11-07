@@ -97,10 +97,15 @@ RUN echo '#!/bin/sh' > /start.sh \
     && echo 'PORT=${PORT:-80}' >> /start.sh \
     && echo 'sed "s/PORT_PLACEHOLDER/${PORT}/" /etc/nginx/http.d/default.conf.template > /etc/nginx/http.d/default.conf' >> /start.sh \
     && echo 'cd /var/www/html' >> /start.sh \
+    && echo 'echo "Clearing config cache..."' >> /start.sh \
+    && echo 'php artisan config:clear || true' >> /start.sh \
+    && echo 'echo "Running migrations..."' >> /start.sh \
+    && echo 'php artisan migrate --force' >> /start.sh \
+    && echo 'echo "Caching configuration..."' >> /start.sh \
     && echo 'php artisan config:cache || true' >> /start.sh \
     && echo 'php artisan route:cache || true' >> /start.sh \
     && echo 'php artisan view:cache || true' >> /start.sh \
-    && echo 'php artisan migrate --force || true' >> /start.sh \
+    && echo 'echo "Starting services..."' >> /start.sh \
     && echo 'exec /usr/bin/supervisord -c /etc/supervisord.conf' >> /start.sh \
     && chmod +x /start.sh
 

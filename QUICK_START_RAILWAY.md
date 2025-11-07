@@ -21,23 +21,38 @@ git push origin main
 3. Railway creates the database automatically
 
 ### 4. Configure Environment Variables
-In Railway project → **Variables**, add:
+
+**In your Laravel App Service** → **Variables**, add:
+
+#### Step 1: Link MySQL Service (Recommended)
+1. In your **Laravel App Service**, click **"+ New"** → **"Add Reference"**
+2. Select your **MySQL service**
+3. Railway will auto-inject MySQL variables
+
+#### Step 2: Add Laravel Variables
+Add these variables to your **Laravel App Service**:
 
 ```bash
 APP_NAME="Community News Portal"
 APP_ENV=production
 APP_DEBUG=false
-APP_KEY=base64:v0ZMjx+sruecz7smNjk4mcdqzIOLEf1MUEuiEgFur2U=  # Generated key (or run: docker compose exec app php artisan key:generate --show)
-APP_URL=                    # Will be auto-set by Railway
+APP_KEY=base64:v0ZMjx+sruecz7smNjk4mcdqzIOLEf1MUEuiEgFur2U=
+APP_URL=${{RAILWAY_PUBLIC_DOMAIN}}
 
-# Database (auto-provided by Railway MySQL service)
+# Database Connection (using Railway variable references)
 DB_CONNECTION=mysql
-# DB_HOST, DB_DATABASE, DB_USERNAME, DB_PASSWORD are auto-set by Railway
+DB_HOST=${{MYSQLHOST}}
+DB_PORT=3306
+DB_DATABASE=${{MYSQLDATABASE}}
+DB_USERNAME=${{MYSQLUSER}}
+DB_PASSWORD=${{MYSQLPASSWORD}}
 
 SESSION_DRIVER=database
 CACHE_DRIVER=database
 QUEUE_CONNECTION=database
 ```
+
+**Important:** Use `${{VARIABLE_NAME}}` syntax to reference MySQL service variables.
 
 **To generate APP_KEY (if you need a new one):**
 ```bash
@@ -49,12 +64,11 @@ cd src
 php artisan key:generate --show
 ```
 
-### 5. Link Database to App
-1. Go to your **MySQL service** in Railway
-2. Click **"Variables"** tab
-3. Copy the database connection variables
-4. Go to your **App service** → **Variables**
-5. Add the database variables (or use Railway's service linking)
+### 5. Verify Database Connection
+After adding variables, check your app logs:
+1. Go to **Laravel App Service** → **Logs**
+2. Look for successful database connection
+3. Verify migrations ran successfully
 
 ### 6. Deploy!
 Railway automatically deploys on every push to `main` branch.
