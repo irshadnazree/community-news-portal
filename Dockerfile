@@ -1,142 +1,52 @@
-# Production Dockerfile for Railway
-FROM php:8.3-fpm-alpine AS base
+# syntax=docker/dockerfile:1.7
 
-# Install system dependencies
+FROM php:8.3-fpm-alpine
+
+# System deps
 RUN apk add --no-cache \
-    bash \
-    curl \
-    tzdata \
-    libpng-dev \
-    libjpeg-turbo-dev \
-    freetype-dev \
-    zip \
-    unzip \
-    git \
-    oniguruma-dev \
-    libzip-dev \
-    nodejs \
-    npm \
-    nginx \
-    supervisor \
-    && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install pdo pdo_mysql mbstring zip exif pcntl gd opcache
+    bash curl git icu-dev oniguruma-dev libzip-dev \
+    libpng-dev freetype-dev libjpeg-turbo-dev \
+    autoconf make g++ zip unzip
 
-# Install Composer
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+# PHP extensions
+RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
+  && docker-php-ext-install -j$(nproc) \
+     pdo pdo_mysql mbstring exif pcntl bcmath gd zip intl opcache
 
-# Set working directory
+# Redis extension
+RUN pecl install redis \
+  && docker-php-ext-enable redis
+
+# Opcache (sane defaults for dev; production can tune)
+RUN { \
+  echo "opcache.enable=1"; \
+  echo "opcache.memory_consumption=256"; \
+  echo "opcache.interned_strings_buffer=16"; \
+  echo "opcache.max_accelerated_files=20000"; \
+  echo "opcache.validate_timestamps=1"; \
+  echo "opcache.revalidate_freq=1"; \
+} > /usr/local/etc/php/conf.d/opcache.ini
+
+# PHP ini defaults
+RUN { \
+  echo "memory_limit=512M"; \
+  echo "upload_max_filesize=50M"; \
+  echo "post_max_size=50M"; \
+  echo "max_execution_time=120"; \
+  echo "date.timezone=UTC"; \
+} > /usr/local/etc/php/conf.d/99-custom.ini
+
 WORKDIR /var/www/html
 
-# Copy application files
-COPY src/ /var/www/html/
+# Install Composer (global)
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-# Install PHP dependencies
-RUN composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
+# Ensure proper permissions for storage and cache at runtime
+RUN addgroup -g 1000 www && adduser -G www -g www -s /bin/sh -D www \
+  && chown -R www:www /var/www/html
+USER www
 
-# Install Node dependencies and build assets
-RUN npm ci && npm run build && rm -rf node_modules
+# Expose FPM port
+EXPOSE 9000
 
-# Set up storage and cache directories
-RUN mkdir -p storage/framework/{sessions,views,cache} \
-    && mkdir -p storage/app/public \
-    && mkdir -p bootstrap/cache \
-    && chown -R www-data:www-data /var/www/html \
-    && chmod -R 775 storage bootstrap/cache
-
-# Configure PHP-FPM to listen on TCP port 9000
-# Disable default www.conf and create our own
-RUN mv /usr/local/etc/php-fpm.d/www.conf /usr/local/etc/php-fpm.d/www.conf.default || true
-
-# Create a custom PHP-FPM pool configuration that will be loaded
-RUN echo '[www]' > /usr/local/etc/php-fpm.d/zz-railway.conf \
-    && echo 'user = www-data' >> /usr/local/etc/php-fpm.d/zz-railway.conf \
-    && echo 'group = www-data' >> /usr/local/etc/php-fpm.d/zz-railway.conf \
-    && echo 'listen = 127.0.0.1:9000' >> /usr/local/etc/php-fpm.d/zz-railway.conf \
-    && echo 'listen.owner = www-data' >> /usr/local/etc/php-fpm.d/zz-railway.conf \
-    && echo 'listen.group = www-data' >> /usr/local/etc/php-fpm.d/zz-railway.conf \
-    && echo 'listen.mode = 0660' >> /usr/local/etc/php-fpm.d/zz-railway.conf \
-    && echo 'pm = dynamic' >> /usr/local/etc/php-fpm.d/zz-railway.conf \
-    && echo 'pm.max_children = 5' >> /usr/local/etc/php-fpm.d/zz-railway.conf \
-    && echo 'pm.start_servers = 2' >> /usr/local/etc/php-fpm.d/zz-railway.conf \
-    && echo 'pm.min_spare_servers = 1' >> /usr/local/etc/php-fpm.d/zz-railway.conf \
-    && echo 'pm.max_spare_servers = 3' >> /usr/local/etc/php-fpm.d/zz-railway.conf \
-    && echo 'pm.max_requests = 500' >> /usr/local/etc/php-fpm.d/zz-railway.conf
-
-# Create Nginx configuration template (PORT will be substituted at runtime)
-RUN echo 'server {' > /etc/nginx/http.d/default.conf.template \
-    && echo '    listen PORT_PLACEHOLDER;' >> /etc/nginx/http.d/default.conf.template \
-    && echo '    server_name _;' >> /etc/nginx/http.d/default.conf.template \
-    && echo '    index index.php index.html;' >> /etc/nginx/http.d/default.conf.template \
-    && echo '    root /var/www/html/public;' >> /etc/nginx/http.d/default.conf.template \
-    && echo '' >> /etc/nginx/http.d/default.conf.template \
-    && echo '    location / {' >> /etc/nginx/http.d/default.conf.template \
-    && echo '        try_files $uri $uri/ /index.php?$query_string;' >> /etc/nginx/http.d/default.conf.template \
-    && echo '    }' >> /etc/nginx/http.d/default.conf.template \
-    && echo '' >> /etc/nginx/http.d/default.conf.template \
-    && echo '    location ~ \.php$ {' >> /etc/nginx/http.d/default.conf.template \
-    && echo '        fastcgi_pass 127.0.0.1:9000;' >> /etc/nginx/http.d/default.conf.template \
-    && echo '        fastcgi_index index.php;' >> /etc/nginx/http.d/default.conf.template \
-    && echo '        include fastcgi_params;' >> /etc/nginx/http.d/default.conf.template \
-    && echo '        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;' >> /etc/nginx/http.d/default.conf.template \
-    && echo '        fastcgi_param PATH_INFO $fastcgi_path_info;' >> /etc/nginx/http.d/default.conf.template \
-    && echo '    }' >> /etc/nginx/http.d/default.conf.template \
-    && echo '' >> /etc/nginx/http.d/default.conf.template \
-    && echo '    location ~ /\.ht {' >> /etc/nginx/http.d/default.conf.template \
-    && echo '        deny all;' >> /etc/nginx/http.d/default.conf.template \
-    && echo '    }' >> /etc/nginx/http.d/default.conf.template \
-    && echo '}' >> /etc/nginx/http.d/default.conf.template
-
-# Copy supervisor configuration
-RUN echo '[supervisord]' > /etc/supervisord.conf \
-    && echo 'nodaemon=true' >> /etc/supervisord.conf \
-    && echo 'user=root' >> /etc/supervisord.conf \
-    && echo '' >> /etc/supervisord.conf \
-    && echo '[program:php-fpm]' >> /etc/supervisord.conf \
-    && echo 'command=php-fpm -F' >> /etc/supervisord.conf \
-    && echo 'autostart=true' >> /etc/supervisord.conf \
-    && echo 'autorestart=true' >> /etc/supervisord.conf \
-    && echo 'stderr_logfile=/dev/stderr' >> /etc/supervisord.conf \
-    && echo 'stderr_logfile_maxbytes=0' >> /etc/supervisord.conf \
-    && echo 'stdout_logfile=/dev/stdout' >> /etc/supervisord.conf \
-    && echo 'stdout_logfile_maxbytes=0' >> /etc/supervisord.conf \
-    && echo '' >> /etc/supervisord.conf \
-    && echo '[program:nginx]' >> /etc/supervisord.conf \
-    && echo 'command=nginx -g "daemon off;"' >> /etc/supervisord.conf \
-    && echo 'autostart=true' >> /etc/supervisord.conf \
-    && echo 'autorestart=true' >> /etc/supervisord.conf \
-    && echo 'stderr_logfile=/dev/stderr' >> /etc/supervisord.conf \
-    && echo 'stderr_logfile_maxbytes=0' >> /etc/supervisord.conf \
-    && echo 'stdout_logfile=/dev/stdout' >> /etc/supervisord.conf \
-    && echo 'stdout_logfile_maxbytes=0' >> /etc/supervisord.conf
-
-# Expose port (Railway will set PORT env var at runtime)
-EXPOSE 80
-
-# Copy Railway initialization script
-COPY railway/init-app.sh /usr/local/bin/init-app.sh
-RUN chmod +x /usr/local/bin/init-app.sh
-
-# Create startup script
-RUN echo '#!/bin/sh' > /start.sh \
-    && echo 'PORT=${PORT:-80}' >> /start.sh \
-    && echo 'echo "=== Starting Laravel Application ==="' >> /start.sh \
-    && echo 'echo "Configuring Nginx for port $PORT..."' >> /start.sh \
-    && echo 'sed "s/PORT_PLACEHOLDER/$PORT/" /etc/nginx/http.d/default.conf.template > /etc/nginx/http.d/default.conf || true' >> /start.sh \
-    && echo 'echo "Nginx config created, listening on port $PORT"' >> /start.sh \
-    && echo 'echo "Verifying Nginx config:"' >> /start.sh \
-    && echo 'grep "listen" /etc/nginx/http.d/default.conf || echo "ERROR: Nginx config missing listen directive!"' >> /start.sh \
-    && echo 'cd /var/www/html' >> /start.sh \
-    && echo 'echo "Running Laravel initialization..."' >> /start.sh \
-    && echo '/usr/local/bin/init-app.sh || echo "Warning: Initialization had errors, but continuing..."' >> /start.sh \
-    && echo 'echo "Verifying PHP-FPM configuration..."' >> /start.sh \
-    && echo 'grep "listen = 127.0.0.1:9000" /usr/local/etc/php-fpm.d/zz-railway.conf || echo "WARNING: PHP-FPM not configured for TCP!"' >> /start.sh \
-    && echo 'echo "Starting services (Nginx + PHP-FPM)..."' >> /start.sh \
-    && echo 'echo "Nginx will listen on port $PORT"' >> /start.sh \
-    && echo 'echo "PHP-FPM will listen on 127.0.0.1:9000"' >> /start.sh \
-    && echo 'exec /usr/bin/supervisord -c /etc/supervisord.conf' >> /start.sh \
-    && chmod +x /start.sh
-
-# Start supervisor
-# Use shell form to ensure environment variables are available
-CMD ["/bin/sh", "/start.sh"]
-
+CMD ["php-fpm", "-F"]
