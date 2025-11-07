@@ -78,7 +78,7 @@ RUN addgroup -g 1000 -S www && \
     adduser -u 1000 -S www -G www
 
 # Copy entrypoint script
-COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY docker/php/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # ==========================================
@@ -121,5 +121,5 @@ EXPOSE 9000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD php-fpm -t || exit 1
 
-ENTRYPOINT ["docker-entrypoint.sh"]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["php-fpm", "-F"]
