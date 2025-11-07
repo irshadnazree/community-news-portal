@@ -1,0 +1,48 @@
+# Docker files
+docker-compose*.yml
+Dockerfile
+.dockerignore
+
+# Git
+.git
+.gitignore
+
+# Documentation
+README.md
+CHANGELOG.md
+*.md
+LICENSE
+
+# IDEs
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker specific
+docker/
+.env*
+
+# Logs
+*.log
+storage/logs/*
+
+# Cache and sessions
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+bootstrap/cache/*.php
+
+# Node modules (if any)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Temporary files
+*.tmp
+*.temp

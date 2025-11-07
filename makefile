@@ -35,7 +35,7 @@ artisan:
 	$(DOCKER_COMPOSE) exec $(PHP_CONTAINER) php artisan $(cmd)
 
 fix-permission:
-	$(DOCKER_COMPOSE) exec $(PHP_CONTAINER) sh -c "mkdir -p storage/framework/{sessions,views,cache} storage/app/public bootstrap/cache && chown -R www-data:www-data storage bootstrap/cache && chmod -R 775 storage bootstrap/cache"
+	$(DOCKER_COMPOSE) exec $(PHP_CONTAINER) sh -c "mkdir -p storage/framework/{sessions,views,cache} storage/app/public bootstrap/cache && chown -R www:www storage bootstrap/cache && chmod -R 775 storage bootstrap/cache"
 
 seed:
 	$(DOCKER_COMPOSE) exec $(PHP_CONTAINER) php artisan db:seed
